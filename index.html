@@ -35,6 +35,10 @@
 
           // Param điều khiển trang này, KHÔNG truyền sang app
           CONTROL_PARAMS: ['noapp', 'env'],
+
+          // Thư mục con nếu site không chạy ở root domain, vd '/qr-home' với
+          // GitHub Pages project site. Phần này bị cắt khỏi path truyền cho app.
+          BASE_PATH: '',
         };
 
         /* =====================================================================
@@ -81,8 +85,15 @@
           return kept.length ? '?' + kept.join('&') : '';
         })();
 
-        // Path phụ (nếu QR trỏ tới /promo/123 thì app nhận được /promo/123)
-        var appPath = location.pathname === '/' ? '' : location.pathname;
+        // Path phụ (nếu QR trỏ tới /promo/123 thì app nhận được /promo/123).
+        // BASE_PATH bị cắt vì đó là thư mục hosting, không phải route của app.
+        var appPath = (function () {
+          var p = location.pathname;
+          var base = CONFIG.BASE_PATH;
+          if (base && p.indexOf(base) === 0) p = p.slice(base.length);
+          if (p.charAt(0) !== '/') p = '/' + p;
+          return p === '/' ? '' : p;
+        })();
 
         /* =====================================================================
          * Deep link theo từng nền tảng

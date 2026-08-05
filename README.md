@@ -40,28 +40,41 @@ Mọi query param trên URL QR được chuyển tiếp nguyên vẹn vào app, 
 Ví dụ `https://<domain>/?campaign=qr01&ref=hn` → app nhận `?campaign=qr01&ref=hn`.
 Path cũng được giữ: `https://<domain>/promo/123?x=1` → app nhận `/promo/123?x=1`.
 
-## Deploy (chọn 1)
+## Deploy
 
-### Cloudflare Pages
-1. Push repo lên GitHub.
-2. Cloudflare Dashboard → Workers & Pages → Create → Pages → kết nối repo.
-3. Build command: để trống. Output/Root directory: `download-redirect`.
-4. Deploy → nhận URL cố định, ví dụ `https://bidvhome-dl.pages.dev`.
+### GitHub Pages (đang dùng)
 
-### Netlify
-```bash
-npm i -g netlify-cli
-netlify deploy --dir=download-redirect --prod
+Settings → Pages → Source: **Deploy from a branch**, branch `main`, folder `/ (root)`.
+
+Hai điều kiện bắt buộc để deeplink chạy được:
+
+**1. `.nojekyll` ở root.** Đã có sẵn trong repo. Không có file này, Jekyll bỏ qua mọi thư mục bắt đầu bằng dấu chấm → `.well-known/` không được publish → App Links / Universal Links không bao giờ verify.
+
+**2. Custom domain.** OS chỉ đọc file verification ở **root của domain**:
+
+```
+https://<domain>/.well-known/assetlinks.json
 ```
 
-### Vercel
-```bash
-npm i -g vercel
-vercel deploy download-redirect --prod
-```
+Project site mặc định (`https://<user>.github.io/qr-home/`) đặt file ở `/qr-home/.well-known/…` — sai chỗ, và `<user>.github.io/.well-known/…` thuộc repo khác. **Deeplink không thể hoạt động trên project site.** Cách xử lý:
 
-### GitHub Pages
-Đặt `index.html` vào branch/thư mục Pages đang trỏ tới (vd `/docs`), bật Pages trong Settings.
+| Cách | Kết quả |
+| --- | --- |
+| Thêm custom domain (file `CNAME` + DNS) | Site chạy ở root → deeplink OK ✅ |
+| Đổi tên repo thành `<user>.github.io` | Site chạy ở root → deeplink OK ✅ |
+| Giữ nguyên project site | Chỉ redirect ra store, **không mở được app** ❌ |
+
+Nếu vẫn chạy ở subpath, set `CONFIG.BASE_PATH = '/qr-home'` trong `index.html` để path truyền sang app không dính tên thư mục.
+
+**Hạn chế không khắc phục được trên GitHub Pages:** không set được `Content-Type` cho `.well-known/apple-app-site-association` (file không có đuôi → phục vụ dưới dạng `application/octet-stream`). iOS có thể từ chối. Kiểm tra bằng lệnh ở mục *Kiểm tra sau khi deploy*; nếu Apple CDN không trả về nội dung thì phải chuyển sang host set được header (Netlify / Cloudflare Pages).
+
+### Netlify / Cloudflare Pages (phương án dự phòng)
+
+`netlify.toml` trong repo đã cấu hình sẵn header `application/json` + rewrite cho AASA. GitHub Pages bỏ qua file này; nó chỉ có tác dụng khi deploy qua Netlify.
+
+```bash
+npx netlify deploy --dir=. --prod
+```
 
 ## Sau khi deploy
 
@@ -83,6 +96,7 @@ Khi đổi một bên, nhớ đổi bên còn lại.
 - [ ] **Custom URL scheme iOS**: điền `CONFIG.IOS_APP_URL_BASE` trong `index.html` (hiện để trống).
 - [ ] **App Android** phải khai `intent-filter` cho `https://<domain>` với `android:autoVerify="true"`.
 - [ ] **App iOS** phải bật capability *Associated Domains* với `applinks:<domain>`.
+- [ ] **Custom domain cho GitHub Pages** (xem mục Deploy) — không có thì deeplink chỉ dừng ở mức redirect store.
 
 ## Kiểm tra sau khi deploy
 
