@@ -1,0 +1,17 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "MD4U8MPEK7.vn.com.bidv.bidvHomes.sit",
+        "paths": ["*", "/"],
+        "components": [{ "/": "*" }]
+      },
+      {
+        "appID": "3GRX94WRGL.vn.com.bidv.bidvHomes",
+        "paths": ["*", "/"],
+        "components": [{ "/": "*" }]
+      }
+    ]
+  }
+}

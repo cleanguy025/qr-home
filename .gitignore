@@ -1,0 +1,6 @@
+node_modules/
+.idea/
+.netlify/
+
+# Chứa _authToken của Nexus nội bộ — không commit
+.npmrc

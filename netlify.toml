@@ -1,0 +1,23 @@
+[build]
+  publish = "."
+  command = ""
+
+# iOS chỉ chấp nhận AASA khi Content-Type là application/json (file không có
+# đuôi nên phải khai tay) và phải phục vụ qua HTTPS, không redirect.
+[[headers]]
+  for = "/.well-known/apple-app-site-association"
+  [headers.values]
+    Content-Type = "application/json"
+    Cache-Control = "public, max-age=300"
+
+[[headers]]
+  for = "/.well-known/assetlinks.json"
+  [headers.values]
+    Content-Type = "application/json"
+    Cache-Control = "public, max-age=300"
+
+# iOS < 13 tìm AASA ở root trước; rewrite (status 200) chứ không redirect 301.
+[[redirects]]
+  from = "/apple-app-site-association"
+  to = "/.well-known/apple-app-site-association"
+  status = 200
