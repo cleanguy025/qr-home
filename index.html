@@ -13,22 +13,54 @@
          * CẤU HÌNH — chỉ cần sửa trong khối này
          * ===================================================================*/
         var CONFIG = {
-          // URL store — giữ đồng bộ với
+          // Store mặc định — giữ đồng bộ với
           // src/app/pages/utilities/constants/download-app.const.ts
           IOS_STORE: 'https://apps.apple.com/vn/app/bidv-home/id1482737401',
           ANDROID_STORE:
             'https://play.google.com/store/apps/details?id=vn.com.bidv.bidvhome',
 
-          // Package Android dùng cho intent:// — chọn qua query ?env=sit|prod
-          ANDROID_PACKAGE: {
-            prod: 'vn.com.bidv.bidvhome',
-            sit: 'vn.com.bidv.bidvhome.sit',
+          // 3 môi trường, khớp với .well-known/assetlinks.json và
+          // .well-known/apple-app-site-association.
+          //
+          // pathPrefix = path app khai trong AASA. Nó vừa là điều kiện để iOS
+          // chịu mở app, vừa là dấu hiệu nhận biết môi trường ngay trên URL nên
+          // không cần thêm param. AASA khai /Ga5k cho CẢ sit lẫn uat; ở đây gán
+          // /Ga5k -> sit và dùng /SyXu (riêng của uat) để phân biệt.
+          //
+          // scheme = custom URL scheme riêng của từng bản app. PHẢI khác nhau
+          // giữa 3 môi trường, nếu không máy cài 2 bản sẽ mở nhầm app (custom
+          // scheme không có cơ chế xác thực chủ sở hữu như Universal Link).
+          //
+          // iosStore/androidStore chỉ khai khi khác store mặc định ở trên.
+          ENV: {
+            prod: {
+              pathPrefix: '/E9Y8',
+              androidPackage: 'vn.com.bidv.bidvhome',
+              scheme: '',
+            },
+            uat: {
+              pathPrefix: '/SyXu',
+              androidPackage: 'vn.com.bidv.bidvhome.uat',
+              scheme: '',
+            },
+            sit: {
+              pathPrefix: '/Ga5k',
+              androidPackage: 'vn.com.bidv.bidvhome.sit',
+              scheme: '',
+            },
           },
 
-          // Custom URL scheme của app iOS, vd 'bidvhome://open'.
-          // ĐỂ TRỐNG = bỏ qua bước mở app trên iOS (chỉ dựa vào Universal Link),
-          // vì scheme sai sẽ khiến Safari bật alert "Address invalid".
-          IOS_APP_URL_BASE: '',
+          // Dùng khi URL không nằm dưới pathPrefix nào và cũng không có ?env=
+          DEFAULT_ENV: 'prod',
+
+          // Fallback khi ENV.scheme để trống — dùng khi cả 3 bản app dùng chung
+          // một scheme. Là cách DUY NHẤT mở được app khi trang này không nằm
+          // trên domain mà app đã khai (applinks: / intent-filter).
+          // Cả ENV.scheme lẫn cái này đều trống = chỉ dựa vào Universal Link.
+          APP_SCHEME: '',
+
+          // Phần đứng sau scheme:// — vd 'open' cho bidvhome://open/promo/123
+          APP_SCHEME_HOST: 'open',
 
           // Chờ bao lâu trước khi rơi về store nếu app không mở được (ms)
           STORE_FALLBACK_DELAY: 1500,
@@ -57,12 +89,6 @@
         var isInAppBrowser =
           /FBAN|FBAV|Instagram|Line\/|Zalo|MicroMessenger|TikTok/i.test(ua);
 
-        var store = isIOS
-          ? CONFIG.IOS_STORE
-          : isAndroid
-            ? CONFIG.ANDROID_STORE
-            : null;
-
         /* =====================================================================
          * Query param: lọc param điều khiển, giữ lại phần truyền cho app
          * ===================================================================*/
@@ -85,12 +111,62 @@
           return kept.length ? '?' + kept.join('&') : '';
         })();
 
-        // Path phụ (nếu QR trỏ tới /promo/123 thì app nhận được /promo/123).
-        // BASE_PATH bị cắt vì đó là thư mục hosting, không phải route của app.
-        var appPath = (function () {
+        /* =====================================================================
+         * Môi trường: prod | uat | sit
+         * ===================================================================*/
+
+        function startsWithSegment(path, prefix) {
+          return path === prefix || path.indexOf(prefix + '/') === 0;
+        }
+
+        // Path đã bỏ BASE_PATH (thư mục hosting, không liên quan tới app)
+        var sitePath = (function () {
           var p = location.pathname;
           var base = CONFIG.BASE_PATH;
           if (base && p.indexOf(base) === 0) p = p.slice(base.length);
+          return p.charAt(0) === '/' ? p : '/' + p;
+        })();
+
+        // Thứ tự ưu tiên: ?env= > pathPrefix trên URL > DEFAULT_ENV
+        var envName = (function () {
+          var forced = getParam('env').toLowerCase();
+          if (forced && CONFIG.ENV[forced]) return forced;
+
+          for (var name in CONFIG.ENV) {
+            if (!Object.prototype.hasOwnProperty.call(CONFIG.ENV, name)) continue;
+            var prefix = CONFIG.ENV[name].pathPrefix;
+            if (prefix && startsWithSegment(sitePath, prefix)) return name;
+          }
+          return CONFIG.DEFAULT_ENV;
+        })();
+
+        var ENV = CONFIG.ENV[envName] || CONFIG.ENV[CONFIG.DEFAULT_ENV];
+
+        var store = isIOS
+          ? ENV.iosStore || CONFIG.IOS_STORE
+          : isAndroid
+            ? ENV.androidStore || CONFIG.ANDROID_STORE
+            : null;
+
+        // Scheme riêng của env, không khai thì dùng scheme chung
+        var appScheme = ENV.scheme || CONFIG.APP_SCHEME;
+        var appSchemeHost = ENV.schemeHost || CONFIG.APP_SCHEME_HOST;
+
+        // Path truyền cho app: bỏ nốt pathPrefix (định danh môi trường), chỉ còn
+        // route thật. /E9Y8/promo/123 -> /promo/123
+        //
+        // Cắt theo prefix THỰC SỰ có trên URL, không theo ENV đã chọn — vì
+        // ?env= có thể trỏ sang môi trường khác với prefix đang đứng.
+        var appPath = (function () {
+          var p = sitePath;
+          for (var name in CONFIG.ENV) {
+            if (!Object.prototype.hasOwnProperty.call(CONFIG.ENV, name)) continue;
+            var prefix = CONFIG.ENV[name].pathPrefix;
+            if (prefix && startsWithSegment(p, prefix)) {
+              p = p.slice(prefix.length);
+              break;
+            }
+          }
           if (p.charAt(0) !== '/') p = '/' + p;
           return p === '/' ? '' : p;
         })();
@@ -103,20 +179,29 @@
         // App Links đã verify), chưa cài thì Chrome tự đưa về browser_fallback_url.
         // URL data giữ nguyên host + path + query nên app nhận đúng param.
         function androidIntentUrl() {
-          var env = getParam('env') === 'sit' ? 'sit' : 'prod';
-          var pkg = CONFIG.ANDROID_PACKAGE[env];
-          var scheme = location.protocol.replace(':', '');
+          var pkg = ENV.androidPackage;
+          var scheme, data;
+
+          if (appScheme) {
+            // Scheme riêng của app -> mở được từ BẤT KỲ domain nào
+            scheme = appScheme;
+            data = appSchemeHost + appPath + appQuery;
+          } else {
+            // Dựa vào intent-filter https của app -> chỉ khớp khi app đã khai
+            // đúng host này, nếu không Chrome sẽ rơi thẳng về store
+            scheme = location.protocol.replace(':', '');
+            data = location.host + location.pathname + appQuery;
+          }
+
           return (
             'intent://' +
-            location.host +
-            location.pathname +
-            appQuery +
+            data +
             '#Intent;scheme=' +
             scheme +
             ';package=' +
             pkg +
             ';S.browser_fallback_url=' +
-            encodeURIComponent(CONFIG.ANDROID_STORE) +
+            encodeURIComponent(store) +
             ';end'
           );
         }
@@ -124,8 +209,8 @@
         // iOS: Universal Link đã bị bỏ lỡ (nếu bắt được thì trang này không load),
         // nên chỉ còn custom scheme. Không cấu hình scheme -> trả null.
         function iosAppUrl() {
-          if (!CONFIG.IOS_APP_URL_BASE) return null;
-          return CONFIG.IOS_APP_URL_BASE + appPath + appQuery;
+          if (!appScheme) return null;
+          return appScheme + '://' + appSchemeHost + appPath + appQuery;
         }
 
         var appUrl = isAndroid
