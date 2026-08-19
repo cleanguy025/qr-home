@@ -1,16 +1,32 @@
 {
+  "appclips": {
+    "apps": [
+      "MD4U8MPEK7.vn.com.bidv.bidvHomes.sit.Clip",
+      "MD4U8MPEK7.vn.com.bidv.bidvHomes.uat.Clip",
+      "3GRX94WRGL.vn.com.bidv.bidvHomes.Clip"
+    ]
+  },
   "applinks": {
     "apps": [],
     "details": [
       {
         "appID": "MD4U8MPEK7.vn.com.bidv.bidvHomes.sit",
-        "paths": ["*", "/"],
-        "components": [{ "/": "*" }]
+        "paths": [
+          "/Ga5k/*"
+        ]
+      },
+      {
+        "appID": "MD4U8MPEK7.vn.com.bidv.bidvHomes.uat",
+        "paths": [
+          "/Ga5k/*",
+          "/SyXu/*"
+        ]
       },
       {
         "appID": "3GRX94WRGL.vn.com.bidv.bidvHomes",
-        "paths": ["*", "/"],
-        "components": [{ "/": "*" }]
+        "paths": [
+          "/E9Y8/*"
+        ]
       }
     ]
   }

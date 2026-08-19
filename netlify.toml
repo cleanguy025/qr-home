@@ -21,3 +21,39 @@
   from = "/apple-app-site-association"
   to = "/.well-known/apple-app-site-association"
   status = 200
+
+# AASA chỉ cho phép mở app khi URL nằm dưới các path prefix này, nên cùng một
+# trang phải phục vụ được ở cả 3. Rewrite 200 để URL trên thanh địa chỉ giữ
+# nguyên prefix — đổi thành redirect là mất luôn điều kiện mở app.
+#
+# Splat /X/* KHÔNG khớp path trần /X, nên mỗi môi trường cần 2 rule: một cho
+# chính prefix, một cho mọi route nằm dưới nó.
+[[redirects]]
+  from = "/E9Y8"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/E9Y8/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/SyXu"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/SyXu/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/Ga5k"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/Ga5k/*"
+  to = "/index.html"
+  status = 200

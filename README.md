@@ -35,12 +35,103 @@ Mọi query param trên URL QR được chuyển tiếp nguyên vẹn vào app, 
 | Param | Tác dụng |
 | --- | --- |
 | `noapp=1` | Bỏ qua mở app, đi thẳng store |
-| `env=sit` | Dùng package `vn.com.bidv.bidvhome.sit` cho `intent://` (mặc định: prod) |
+| `env=prod\|uat\|sit` | Ghi đè môi trường tự nhận từ path (xem mục dưới). Giá trị lạ bị bỏ qua |
 
-Ví dụ `https://<domain>/?campaign=qr01&ref=hn` → app nhận `?campaign=qr01&ref=hn`.
-Path cũng được giữ: `https://<domain>/promo/123?x=1` → app nhận `/promo/123?x=1`.
+Ví dụ `https://<domain>/E9Y8/?campaign=qr01&ref=hn` → app nhận `?campaign=qr01&ref=hn`.
+Path cũng được giữ: `https://<domain>/E9Y8/promo/123?x=1` → app nhận `/promo/123?x=1`.
+
+## Ba môi trường
+
+Môi trường được nhận từ **path prefix trên URL** — chính là path mà app khai trong AASA, nên không cần thêm param:
+
+| Env | Path prefix | Android package | iOS appID |
+| --- | --- | --- | --- |
+| `prod` | `/E9Y8` | `vn.com.bidv.bidvhome` | `3GRX94WRGL.vn.com.bidv.bidvHomes` |
+| `uat` | `/SyXu` | `vn.com.bidv.bidvhome.uat` | `MD4U8MPEK7.vn.com.bidv.bidvHomes.uat` |
+| `sit` | `/Ga5k` | `vn.com.bidv.bidvhome.sit` | `MD4U8MPEK7.vn.com.bidv.bidvHomes.sit` |
+
+Thứ tự ưu tiên: `?env=` → path prefix → `CONFIG.DEFAULT_ENV` (`prod`).
+
+Prefix bị **cắt khỏi path truyền cho app** vì nó là định danh môi trường, không phải route: `/E9Y8/promo/123` → app nhận `/promo/123`.
+
+AASA khai `/Ga5k` cho **cả sit lẫn uat**. Code gán `/Ga5k` → sit và dùng `/SyXu` (riêng của uat) cho uat. Muốn mở app uat từ URL `/Ga5k/…` thì thêm `?env=uat`.
+
+Đổi cấu hình ở `CONFIG.ENV` trong `index.html`. Mỗi env có thêm khoá tuỳ chọn:
+
+| Khoá | Không khai thì |
+| --- | --- |
+| `scheme` | dùng `CONFIG.APP_SCHEME` chung |
+| `schemeHost` | dùng `CONFIG.APP_SCHEME_HOST` (`open`) |
+| `iosStore` / `androidStore` | dùng store mặc định (prod) |
+
+Nên đặt `scheme` **khác nhau cho từng env** — custom scheme không xác thực chủ sở hữu, máy cài 2 bản mà chung scheme thì OS mở bản nào là tuỳ hên xui.
 
 ## Deploy
+
+### Netlify (khuyến nghị)
+
+Netlify xử lý được cả 3 thứ mà GitHub Pages không làm được: phục vụ `.well-known/`, set `Content-Type` cho AASA, và rewrite path prefix ở mọi độ sâu.
+
+#### 1. Tạo site từ Git
+
+1. [app.netlify.com](https://app.netlify.com) → **Add new site** → **Import an existing project** → **GitHub** → chọn repo `qr-home`.
+2. Branch: `main`. **Build command và Publish directory để trống** — `netlify.toml` trong repo đã khai sẵn, và nó luôn thắng cấu hình trên giao diện.
+3. **Deploy site**.
+
+Xong bước này có URL tạm dạng `https://<tên-ngẫu-nhiên>.netlify.app`. Đổi tên ở *Site configuration → Site details → Change site name*.
+
+Từ đây mỗi lần push lên `main` là Netlify tự deploy lại.
+
+> Dùng Git chứ đừng dùng `netlify deploy` từ máy local: publish directory là `.`, nên CLI sẽ upload cả `node_modules/`. Bản deploy từ Git thì clone sạch theo `.gitignore`.
+
+#### 2. Gắn custom domain
+
+Bước bắt buộc — deeplink không chạy trên `*.netlify.app` vì app không khai domain đó.
+
+*Site configuration → Domain management → Add a domain* → nhập domain (vd `qr.bidvhome.vn`).
+
+Rồi trỏ DNS ở nhà cung cấp domain:
+
+| Loại domain | Bản ghi |
+| --- | --- |
+| Subdomain (`qr.bidvhome.vn`) | `CNAME` → `<tên-site>.netlify.app` |
+| Apex (`bidvhome.vn`) | `A` → `75.2.60.5`, hoặc `ALIAS`/`ANAME` → `<tên-site>.netlify.app` |
+
+Đợi Netlify cấp chứng chỉ Let's Encrypt (*Domain management → HTTPS*, thường vài phút). **Phải có HTTPS hợp lệ trước khi test Universal Link** — iOS từ chối AASA trên chứng chỉ sai hoặc self-signed.
+
+Bật luôn *Force HTTPS*.
+
+#### 3. `netlify.toml` làm gì
+
+| Khai báo | Tác dụng |
+| --- | --- |
+| `publish = "."` | Phục vụ thẳng từ gốc repo, không cần build |
+| 2 khối `[[headers]]` | `Content-Type: application/json` cho AASA (file không đuôi) và `assetlinks.json` |
+| Rewrite `/apple-app-site-association` | iOS < 13 tìm ở root trước, rewrite 200 về `.well-known/` |
+| Rewrite `/E9Y8/*`, `/SyXu/*`, `/Ga5k/*` | Cùng một `index.html` phục vụ ở cả 3 prefix, **mọi độ sâu** |
+
+Rewrite phải là `status = 200`. Đổi thành 301 là URL trên thanh địa chỉ mất prefix, mà mất prefix là mất luôn điều kiện iOS chịu mở app.
+
+Thêm môi trường mới thì thêm một khối `[[redirects]]` tương ứng, khớp với `CONFIG.ENV` trong `index.html`.
+
+#### 4. Kiểm tra
+
+```bash
+D=qr.bidvhome.vn
+
+# Phải 200 + application/json, KHÔNG được redirect
+curl -sI "https://$D/.well-known/apple-app-site-association" | head -3
+curl -sI "https://$D/.well-known/assetlinks.json" | head -3
+
+# Rewrite prefix — cả nông lẫn sâu, đều phải 200 và trả về index.html
+curl -sI "https://$D/E9Y8/" | head -1
+curl -sI "https://$D/E9Y8/promo/123?x=1" | head -1
+
+# Apple CDN đã lấy được AASA chưa (sau khi domain đã có HTTPS)
+curl -s "https://app-site-association.cdn-apple.com/a/v1/$D"
+```
+
+Dòng `curl -sI` của AASA phải thấy `HTTP/2 200` và `content-type: application/json`. Thấy `301`/`302` là hỏng — iOS không đi theo redirect cho file này.
 
 ### GitHub Pages (đang dùng)
 
@@ -68,19 +159,15 @@ Nếu vẫn chạy ở subpath, set `CONFIG.BASE_PATH = '/qr-home'` trong `index
 
 **Hạn chế không khắc phục được trên GitHub Pages:** không set được `Content-Type` cho `.well-known/apple-app-site-association` (file không có đuôi → phục vụ dưới dạng `application/octet-stream`). iOS có thể từ chối. Kiểm tra bằng lệnh ở mục *Kiểm tra sau khi deploy*; nếu Apple CDN không trả về nội dung thì phải chuyển sang host set được header (Netlify / Cloudflare Pages).
 
-### Netlify / Cloudflare Pages (phương án dự phòng)
-
-`netlify.toml` trong repo đã cấu hình sẵn header `application/json` + rewrite cho AASA. GitHub Pages bỏ qua file này; nó chỉ có tác dụng khi deploy qua Netlify.
-
-```bash
-npx netlify deploy --dir=. --prod
-```
+Thêm một hạn chế nữa: GitHub Pages không có rewrite, nên `/E9Y8/promo/123` không khớp file nào. Workflow phải copy `index.html` thành `404.html` để hứng — trang vẫn chạy, nhưng mã trạng thái trả về là 404. Netlify không dính vì đã có rewrite thật.
 
 ## Sau khi deploy
 
-1. Lấy URL cố định (vd `https://bidvhome-dl.pages.dev`).
+1. Chốt URL cuối cùng, đúng path prefix của môi trường (vd `https://qr.bidvhome.vn/E9Y8/`).
 2. Tạo QR code encode đúng URL đó (bất kỳ trình tạo QR nào).
 3. Thay ảnh `src/assets/images/QR-test.png` bằng QR mới.
+
+**Chốt domain trước khi in QR.** Đổi domain sau là phải in lại toàn bộ; đổi URL store hay logic điều hướng thì không, chỉ cần sửa `index.html` rồi deploy.
 
 QR **không cần in/tạo lại** về sau: nếu URL store đổi hoặc muốn trỏ về web production, chỉ sửa `index.html` rồi deploy lại — nội dung QR giữ nguyên.
 
@@ -90,13 +177,24 @@ Các URL store trong `index.html` phải khớp với
 `src/app/pages/utilities/constants/download-app.const.ts` (`URL_APP.IOS`, `URL_APP.ANDROID`).
 Khi đổi một bên, nhớ đổi bên còn lại.
 
+## Ràng buộc từ file verification
+
+`.well-known/apple-app-site-association` (bản chính thức từ team mobile) khai `paths` cụ thể chứ không phải `"*"`, tức **giới hạn Universal Link theo path** (bảng đầy đủ ở mục *Ba môi trường*).
+
+Nghĩa là trang này **phải nằm dưới path prefix tương ứng** thì iOS mới mở app. Đặt ở `/` hay `/qr-home/` sẽ không bao giờ kích hoạt, kể cả khi domain và AASA đều đúng.
+
+→ URL cho QR bản prod phải có dạng `https://<domain>/E9Y8/<gì đó>?param=…`, tức file `index.html` phải deploy vào thư mục `E9Y8/` (và `SyXu/`, `Ga5k/` cho uat/sit).
+
+Cấu trúc path prefix ngẫu nhiên 4 ký tự này là dấu hiệu của Firebase Dynamic Links (đã ngừng hoạt động từ 25/08/2025). Nếu đúng vậy, hỏi team mobile xem bản app hiện hành còn khai path nào khác không — nhiều khả năng cần build mới để khai domain/path của trang này.
+
 ## Việc còn phải làm (phía app / hạ tầng)
 
-- [ ] **SHA256 fingerprint cho package prod** trong `.well-known/assetlinks.json` đang tạm dùng lại fingerprint của bản `.sit`. Lấy fingerprint thật ở Play Console → *App integrity → App signing key certificate* và thay vào entry `vn.com.bidv.bidvhome`.
-- [ ] **Custom URL scheme iOS**: điền `CONFIG.IOS_APP_URL_BASE` trong `index.html` (hiện để trống).
+Chi tiết cấu hình phía app (entitlements iOS, `intent-filter` Android, lệnh test): [docs/app-setup.md](docs/app-setup.md) — gửi thẳng file này cho team mobile.
+
+- [ ] **Chốt domain**: trang này phải chạy trên đúng domain mà app khai trong *Associated Domains* (`applinks:`) và `intent-filter`. Domain khác → Universal Link không bao giờ chạy.
+- [ ] **Chốt path**: URL phải nằm dưới path prefix ở bảng trên.
+- [ ] **Custom URL scheme**: điền `CONFIG.APP_SCHEME` trong `index.html` (hiện để trống). Đây là cách duy nhất mở app khi chưa có domain/path đúng.
 - [ ] **App Android** phải khai `intent-filter` cho `https://<domain>` với `android:autoVerify="true"`.
-- [ ] **App iOS** phải bật capability *Associated Domains* với `applinks:<domain>`.
-- [ ] **Custom domain cho GitHub Pages** (xem mục Deploy) — không có thì deeplink chỉ dừng ở mức redirect store.
 
 ## Kiểm tra sau khi deploy
 
